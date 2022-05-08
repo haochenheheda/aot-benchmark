@@ -12,7 +12,7 @@ from torchvision import transforms
 from dataloaders.eval_datasets import YOUTUBEVOS_Test, YOUTUBEVOS_DenseTest, DAVIS_Test, EVAL_TEST
 import dataloaders.video_transforms as tr
 
-from utils.image import flip_tensor, save_mask
+from utils.image import flip_tensor, save_mask, save_prob, save_id
 from utils.checkpoint import load_network
 from utils.eval import zip_folder
 
@@ -124,6 +124,14 @@ class Evaluator(object):
                                                        cfg.TEST_DATASET,
                                                        eval_name + '_sparse',
                                                        'Annotations')
+                self.prob_root_sparse = os.path.join(cfg.DIR_EVALUATION,
+                                                       cfg.TEST_DATASET,
+                                                       eval_name + '_ensemble',
+                                                       'Probs')
+                self.id_root_sparse = os.path.join(cfg.DIR_EVALUATION,
+                                                       cfg.TEST_DATASET,
+                                                       eval_name + '_ensemble',
+                                                       'Ids')
                 self.zip_dir_sparse = os.path.join(
                     cfg.DIR_EVALUATION, cfg.TEST_DATASET,
                     '{}_sparse.zip'.format(eval_name))
@@ -240,8 +248,16 @@ class Evaluator(object):
                     images_sparse = seq_dataset.images_sparse
                     seq_dir_sparse = os.path.join(self.result_root_sparse,
                                                   seq_name)
+                    prob_dir_sparse = os.path.join(self.prob_root_sparse,
+                                                  seq_name)
+                    id_dir_sparse = os.path.join(self.id_root_sparse,
+                                                  seq_name)
                     if not os.path.exists(seq_dir_sparse):
                         os.makedirs(seq_dir_sparse)
+                    if not os.path.exists(prob_dir_sparse):
+                        os.makedirs(prob_dir_sparse)
+                    if not os.path.exists(id_dir_sparse):
+                        os.makedirs(id_dir_sparse)
 
                 seq_total_time = 0
                 seq_total_frame = 0
@@ -331,6 +347,14 @@ class Evaluator(object):
 
                         if new_obj_label is not None:
                             keep = (new_obj_label == 0).float()
+                            pred_prob = pred_prob * keep
+                            for tmp_new_obj_label in range(1,int(new_obj_label.max().item())+1):
+                                if (new_obj_label == tmp_new_obj_label).sum() > 0:
+                                    pred_prob[:, tmp_new_obj_label:tmp_new_obj_label+1, :, :][new_obj_label == tmp_new_obj_label] = 1.
+
+
+
+
                             pred_label = pred_label * \
                                 keep + new_obj_label * (1 - keep)
                             new_obj_nums = [int(pred_label.max().item())]
@@ -412,17 +436,32 @@ class Evaluator(object):
                                 os.path.join(self.result_root_sparse, seq_name,
                                              imgname[0].split('.')[0] +
                                              '.png'),
+                                'prob_path':
+                                os.path.join(self.prob_root_sparse, seq_name,
+                                             imgname[0].split('.')[0]),
+                                'id_path':
+                                os.path.join(self.id_root_sparse, seq_name,
+                                             imgname[0].split('.')[0] +
+                                             '.npy'),
                                 'mask':
                                 pred_label,
+                                'prob':
+                                pred_prob.cpu(),
                                 'obj_idx':
                                 obj_idx
                             })
-
                 # Save result
-                for mask_result in seq_pred_masks['dense'] + seq_pred_masks[
-                        'sparse']:
-                    save_mask(mask_result['mask'].squeeze(0).squeeze(0),
-                              mask_result['path'], mask_result['obj_idx'])
+                #for mask_result in seq_pred_masks['dense'] + seq_pred_masks[
+                #        'sparse']:
+                #    save_mask(mask_result['mask'].squeeze(0).squeeze(0),
+                #              mask_result['path'], mask_result['obj_idx'])
+
+                for mask_result in seq_pred_masks['sparse']:
+                    save_prob(mask_result['prob'],
+                              mask_result['prob_path'])
+                    save_id(mask_result['obj_idx'],
+                              mask_result['id_path'])
+
                 del (seq_pred_masks)
 
                 for timer in seq_timers:
@@ -478,10 +517,11 @@ class Evaluator(object):
                         max_mem))
 
         if self.rank == 0:
-            zip_folder(self.source_folder, self.zip_dir)
+            #zip_folder(self.source_folder, self.zip_dir)
             self.print_log('Saving result to {}.'.format(self.zip_dir))
             if 'all_frames' in cfg.TEST_DATASET_SPLIT:
-                zip_folder(self.result_root_sparse, self.zip_dir_sparse)
+                #zip_folder(self.result_root_sparse, self.zip_dir_sparse)
+                pass
             end_eval_time = time.time()
             total_eval_time = str(
                 datetime.timedelta(seconds=int(end_eval_time -

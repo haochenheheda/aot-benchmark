@@ -1,5 +1,7 @@
+import os
 import numpy as np
 from PIL import Image
+import cv2
 import torch
 import threading
 
@@ -104,6 +106,14 @@ def save_mask(mask_tensor, path, squeeze_idx=None):
     mask = mask_tensor.cpu().numpy().astype('uint8')
     threading.Thread(target=_save_mask, args=[mask, path, squeeze_idx]).start()
 
+def save_prob(prob_tensor, path):
+    prob_tensor = (prob_tensor.numpy() * 255)[0]
+    for ind in range(prob_tensor.shape[0]):
+        cv2.imwrite(path + '_' + str(ind) + '.jpg', prob_tensor[ind])
+
+def save_id(id_tensor, path):
+    np.save(path,np.array(id_tensor))
+    pass
 
 def flip_tensor(tensor, dim=0):
     inv_idx = torch.arange(tensor.size(dim) - 1, -1, -1,
